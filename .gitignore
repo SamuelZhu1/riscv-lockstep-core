@@ -4,3 +4,4 @@ obj_dir/
 *.fst
 results/
 __pycache__/
+tests/riscv-tests/
