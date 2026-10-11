@@ -48,8 +48,14 @@ module i2c_master (
     logic        reading;
     logic        scl_o, sda_o; // 1 = pull low
 
+    // A status read in the cycle right after a CMD store is registered at the
+    // same edge the store lands, so it would still see the old idle state.
+    // Counting the in-flight CMD write as busy closes that window (found by
+    // the driver test: wait_idle() returned at once and the next TXDATA write
+    // overwrote the address byte before it was sent).
     logic busy;
-    assign busy = (state != S_IDLE) || c_start || c_write || c_read || c_stop;
+    assign busy = (state != S_IDLE) || c_start || c_write || c_read || c_stop ||
+                  (we && waddr == 6'h1);
 
     // two-flop synchronizers for the bus lines
     logic [1:0] scl_s, sda_s;

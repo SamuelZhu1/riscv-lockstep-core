@@ -280,8 +280,14 @@ module core (
     logic        ex_csr, ex_ecall, ex_ebreak, ex_mret, ex_fencei, ex_illegal, ex_a_pc, ex_b_imm;
     logic [3:0]  ex_alu;
 
+`ifdef BUG_FLUSH_ONE
+    // wrong: a redirect only flushes IF/ID, so the instruction in ID still runs
+    wire flush_idex = !rst_n || stall;
+`else
+    wire flush_idex = !rst_n || redirect || stall;
+`endif
     always_ff @(posedge clk) begin
-        if (!rst_n || redirect || stall) begin
+        if (flush_idex) begin
             ex_valid <= 1'b0;
             ex_use1 <= 1'b0; ex_use2 <= 1'b0; ex_wr <= 1'b0; ex_load <= 1'b0; ex_store <= 1'b0;
             ex_branch <= 1'b0; ex_jal <= 1'b0; ex_jalr <= 1'b0; ex_csr <= 1'b0; ex_ecall <= 1'b0;

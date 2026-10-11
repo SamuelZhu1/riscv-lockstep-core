@@ -6,10 +6,10 @@
 // Fault injection (set by the harness when firmware writes FAULT):
 //   fault_nack  : NACK the next N address bytes, like a module that is
 //                 still busy after power-up
-//   fault_stuck : on the next byte read, pull SDA low and keep it low for
-//                 18 SCL clocks: the 9 of the read itself plus 9 more, so
-//                 the bus is still held after the master's STOP, the way a
-//                 slave that lost its place mid-byte waits for clocks
+//   fault_stuck : on the next byte read, pull SDA low and keep holding it
+//                 after the transfer ends, the way a slave that lost its
+//                 place mid-byte waits for clocks; it lets go after the
+//                 master clocks SCL 9 times on an otherwise idle bus
 
 module i2c_eeprom (
     input  logic       clk,
@@ -44,6 +44,7 @@ module i2c_eeprom (
     logic       stuck_armed;
     logic [4:0] stuck_clocks;
     logic [7:0] first_byte;
+    logic [6:0] idle_cnt;
 
     wire scl_rise = scl && !scl_q;
     wire scl_fall = !scl && scl_q;
@@ -57,7 +58,7 @@ module i2c_eeprom (
         if (!rst_n) begin
             st <= IDLE; scl_q <= 1'b1; sda_q <= 1'b1; sda_oe <= 1'b0;
             bitc <= 4'd0; sh <= 8'h0; dev_a2 <= 1'b0; rw <= 1'b0; got_offset <= 1'b0; offset <= 8'h0;
-            nack_left <= 8'd0; stuck_armed <= 1'b0; stuck_clocks <= 5'd0; fault_nack_used <= 1'b0;
+            nack_left <= 8'd0; stuck_armed <= 1'b0; stuck_clocks <= 5'd0; idle_cnt <= 7'd0; fault_nack_used <= 1'b0;
         end else begin
             scl_q <= scl;
             sda_q <= sda;
@@ -66,13 +67,19 @@ module i2c_eeprom (
             if (fault_stuck_arm) stuck_armed <= 1'b1;
 
             if (st == STUCK) begin
-                // holds SDA low and ignores STARTs until clocked out
+                // holds SDA low through the rest of the read and the STOP; only
+                // once the master has let SCL sit high (transfer over) does it
+                // count clocks, and 9 of those free it
                 sda_oe <= 1'b1;
-                if (scl_rise) stuck_clocks <= stuck_clocks + 5'd1;
-                if (stuck_clocks == 5'd18) begin
+                if (scl) begin
+                    if (idle_cnt != 7'd127) idle_cnt <= idle_cnt + 7'd1;
+                end else if (idle_cnt != 7'd127) idle_cnt <= 7'd0;
+                if (idle_cnt == 7'd127 && scl_rise) stuck_clocks <= stuck_clocks + 5'd1;
+                if (stuck_clocks == 5'd9) begin
                     sda_oe <= 1'b0;
                     st <= IDLE;
                     stuck_clocks <= 5'd0;
+                    idle_cnt <= 7'd0;
                 end
             end else if (start_c) begin
                 st <= ADDR; bitc <= 4'd0; sda_oe <= 1'b0;
