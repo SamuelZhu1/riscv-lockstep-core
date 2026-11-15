@@ -1,0 +1,28 @@
+name: ci
+on: [push, pull_request]
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y verilator gcc-riscv64-unknown-elf
+      - name: ISS unit tests
+        run: make iss-test
+      - name: Build simulator
+        run: make sim
+      - name: rv32ui compliance (lockstep)
+        run: make compliance
+      - name: Random lockstep regression
+        run: make random N=200 LEN=3000 SEED=${{ github.run_number }}
+      - name: I2C driver on the core
+        run: make driver
+      - name: CPI benchmark
+        run: make bench
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage
+          path: build/coverage.json
